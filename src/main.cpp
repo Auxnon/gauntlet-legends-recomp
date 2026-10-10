@@ -53,11 +53,42 @@ static const std::u8string game_id = u8"gauntlet.n64.us";
 
 static SDL_Window* window = nullptr;
 
+// Launched from an environment without WAYLAND_DISPLAY (ssh, some IDE terminals), SDL
+// can't find the compositor even though one is running. Use the first wayland-N socket
+// in XDG_RUNTIME_DIR in that case.
+static void find_wayland_display() {
+    const char* runtime_dir = getenv("XDG_RUNTIME_DIR");
+    if (getenv("WAYLAND_DISPLAY") != nullptr || runtime_dir == nullptr) {
+        return;
+    }
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(runtime_dir, ec)) {
+        std::string name = entry.path().filename().string();
+        if (name.rfind("wayland-", 0) == 0 && name.find('.') == std::string::npos && entry.is_socket(ec)) {
+            fprintf(stderr, "[gauntlet] WAYLAND_DISPLAY unset, using %s\n", name.c_str());
+            setenv("WAYLAND_DISPLAY", name.c_str(), 0);
+            return;
+        }
+    }
+}
+
 static ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
+    find_wayland_display();
     // Prefer native Wayland and fall back to X11. SDL_VIDEODRIVER overrides this.
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland,x11");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
-        exit_error(std::string("Failed to initialize SDL: ") + SDL_GetError());
+        std::string msg = std::string("Failed to initialize SDL: ") + SDL_GetError();
+        SDL_version linked;
+        SDL_GetVersion(&linked);
+        msg += "\n  SDL " + std::to_string(linked.major) + "." + std::to_string(linked.minor) + "." + std::to_string(linked.patch) + ", video drivers:";
+        for (int i = 0; i < SDL_GetNumVideoDrivers(); i++) {
+            msg += std::string(" ") + SDL_GetVideoDriver(i);
+        }
+        for (const char* var : { "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DISPLAY", "SDL_VIDEODRIVER" }) {
+            const char* value = getenv(var);
+            msg += std::string("\n  ") + var + "=" + (value ? value : "(unset)");
+        }
+        exit_error(msg);
     }
     return {};
 }
