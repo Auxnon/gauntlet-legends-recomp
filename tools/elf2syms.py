@@ -297,18 +297,33 @@ def Main() -> int:
             applied += 1
         print(f"applied {applied} libultra names")
 
+    def Starts_Leaf(tseg, ref):
+        """ref follows a jr $ra + delay slot inside a function, and nothing before it
+        branches to ref or beyond, so the code from ref on is a separate function."""
+        image, vram, funcs = tseg["image"], tseg["vram"], tseg["funcs"]
+        container = next((v for v, (_, size) in funcs.items() if v < ref < v + size), None)
+        if container is None or Word(image, vram, ref - 8) != 0x03E00008:
+            return False
+        for addr in range(container, ref, 4):
+            target = Branch_Target(Word(image, vram, addr), addr)
+            if target is not None and target >= ref:
+                return False
+        return True
+
     # Function pointers: code the decomp labeled as data (e.g. thread entry points)
     # is only reached indirectly, so seed any referenced address that starts with a
     # stack-allocating prologue.
     pointers = 0
+    all_refs = set()
     for seg in segments:
-        for ref in Address_References(seg["image"], seg["vram"]):
-            tseg = Segment_For(ref)
-            if tseg is None or ref % 4 or ref in tseg["funcs"]:
-                continue
-            if Is_Prologue(Word(tseg["image"], tseg["vram"], ref)):
-                Add_Function(tseg, ref, tseg["names"].get(ref, f"func_{tseg['name']}_{ref:08X}"))
-                pointers += 1
+        all_refs |= Address_References(seg["image"], seg["vram"])
+    for ref in sorted(all_refs):
+        tseg = Segment_For(ref)
+        if tseg is None or ref % 4 or ref in tseg["funcs"]:
+            continue
+        if Is_Prologue(Word(tseg["image"], tseg["vram"], ref)) or Starts_Leaf(tseg, ref):
+            Add_Function(tseg, ref, tseg["names"].get(ref, f"func_{tseg['name']}_{ref:08X}"))
+            pointers += 1
     print(f"discovered {pointers} functions from address references")
 
     # Follow jal targets from known code to a fixed point. Targets can land in the
@@ -329,6 +344,29 @@ def Main() -> int:
                 discovered += 1
             worklist.append((tseg, target))
     print(f"split {split} merged functions, discovered {discovered} unlabeled functions")
+
+    # Leaf functions have no prologue, so the pointer scan above misses them. Seed any
+    # referenced address that starts unclaimed code between known functions (after
+    # alignment padding) and ends in jr $ra before the next function.
+    leaves = 0
+    for seg in segments:
+        image, vram, funcs = seg["image"], seg["vram"], seg["funcs"]
+        seg_end = vram + len(image)
+        for func_vram in sorted(funcs):
+            gap = func_vram + funcs[func_vram][1]
+            limit = min([v for v in funcs if v >= gap], default=seg_end)
+            while gap < limit and Word(image, vram, gap) == 0:
+                gap += 4
+            while gap < limit and gap in all_refs and Word(image, vram, gap) >> 24 != 0xE0:
+                size = Discovered_Size(image, vram, gap, limit)
+                if Word(image, vram, gap + size - 8) != 0x03E00008:  # ran into the limit
+                    break
+                funcs[gap] = [seg["names"].get(gap, f"func_{seg['name']}_{gap:08X}"), size]
+                leaves += 1
+                gap += size
+                while gap < limit and Word(image, vram, gap) == 0:
+                    gap += 4
+    print(f"discovered {leaves} referenced leaf functions between known ones")
 
     for seg in segments:
         name, vram, image = seg["name"], seg["vram"], seg["image"]

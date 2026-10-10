@@ -76,7 +76,7 @@ cmake --build build -j6
 ```
 
 Controls: arrows = stick, X = A, C = B, Z = Z, Enter = Start, A/S = L/R, IJKL = C buttons.
-Gamepads work too. It runs natively on Wayland, falling back to X11; set
+Gamepads work too; set `GAUNTLET_LOG_INPUT=1` to log button changes. It runs natively on Wayland, falling back to X11; set
 `SDL_VIDEODRIVER=x11` to force XWayland.
 
 ## Layout

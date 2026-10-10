@@ -186,6 +186,13 @@ static bool get_input(int controller_num, uint16_t* buttons, float* x, float* y)
         stick_y -= SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) / 32768.0f;
     }
 
+    static const bool log_input = getenv("GAUNTLET_LOG_INPUT") != nullptr;
+    static uint16_t last_pressed = 0;
+    if (log_input && pressed != last_pressed) {
+        fprintf(stderr, "[input] buttons 0x%04X\n", pressed);
+        last_pressed = pressed;
+    }
+
     *buttons = pressed;
     *x = std::clamp(stick_x, -1.0f, 1.0f);
     *y = std::clamp(stick_y, -1.0f, 1.0f);
