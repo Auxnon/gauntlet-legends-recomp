@@ -1,0 +1,15 @@
+diff --git a/tools/splat_ext/glz.py b/tools/splat_ext/glz.py
+index 9e9b049..51c847b 100644
+--- a/tools/splat_ext/glz.py
++++ b/tools/splat_ext/glz.py
+@@ -25,8 +25,8 @@ class N64SegGlz(Segment):
+     def is_data() -> bool:
+         return True
+ 
+-    def __init__(self, rom_start, rom_end, type, name, vram_start, args, yaml):
+-        super().__init__(rom_start, rom_end, type, name, vram_start, args=args, yaml=yaml)
++    def __init__(self, rom_start, rom_end, type, name, vram_start, args, yaml, **kwargs):
++        super().__init__(rom_start, rom_end, type, name, vram_start, args=args, yaml=yaml, **kwargs)
+ 
+         if isinstance(yaml, dict):
+             decompressed_path = yaml.get("decompressed_path", f"files/{self.name}")

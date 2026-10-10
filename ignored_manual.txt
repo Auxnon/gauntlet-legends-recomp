@@ -1,0 +1,2 @@
+# Functions replaced by native code in src/; never recompile these.
+func_8020010C  # boot loader: programs the PI registers directly (src/boot.cpp)

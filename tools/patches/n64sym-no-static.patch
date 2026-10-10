@@ -1,0 +1,24 @@
+diff --git a/Makefile b/Makefile
+index 7cc832b..9c35cd4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -2,7 +2,7 @@ CC=g++ -std=c++11
+ CFLAGS=-I./include -I./build -O3 -s -Wall -Wno-unused-function -Wno-strict-aliasing -Wno-unused-result
+ 
+ LD=g++
+-LDFLAGS=-static -s -Wl,--gc-sections,-lm,-lpthread
++LDFLAGS= -s -Wl,--gc-sections,-lm,-lpthread
+ 
+ SRC_DIR=src
+ OBJ_DIR=obj
+diff --git a/tools/Makefile b/tools/Makefile
+index 9fde110..6c8e3ce 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -1,5 +1,5 @@
+ CC=g++
+-CFLAGS=-static -I../include -I./src -O3 -s -Wno-unused-result
++CFLAGS= -I../include -I./src -O3 -s -Wno-unused-result
+ 
+ SRC_DIR=src
+ BIN_DIR=bin

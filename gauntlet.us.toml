@@ -1,0 +1,87 @@
+# N64Recomp config for Gauntlet Legends (US).
+# Inputs are produced by tools/elf2syms.py from the decomp's build/*.elf.
+
+[input]
+entrypoint = 0x80200000
+symbols_file_path = "generated/gauntlet.syms.toml"
+rom_file_path = "generated/gauntlet.recomp.z64"
+output_func_path = "RecompiledFuncs"
+recomp_include = "#include \"recomp.h\""
+functions_per_output_file = 200
+
+[patches]
+# Functions that need to be stubbed or replaced by the runtime go here.
+stubs = []
+ignored = [
+    "func_8020010C",
+    "func_game_E0080C54_80854",
+    "func_game_E0080C74_80874",
+    "func_game_E0080C9C_8089C",
+    "func_game_E0080CBC_808BC",
+    "func_game_E0080CDC_808DC",
+    "func_game_E00A397C_A357C",
+    "aspMainTextStart",
+    "func_game_E00A6420_A6020",
+]
+
+# Never-taken `bltzal $zero, table` loads a data table's address into $ra.
+# N64Recomp only links when the branch is taken, so load $ra directly instead.
+[[patches.instruction]]
+func = "func_game_E0097620_97220"
+vram = 0xE0097630
+value = 0x3C1FE009 # lui $ra, 0xE009
+
+[[patches.instruction]]
+func = "func_game_E0097620_97220"
+vram = 0xE0097634
+value = 0x37FF7638 # ori $ra, $ra, 0x7638
+
+[[patches.instruction]]
+func = "func_game_E0097714_97314"
+vram = 0xE009773C
+value = 0x3C1FE009
+
+[[patches.instruction]]
+func = "func_game_E0097714_97314"
+vram = 0xE0097740
+value = 0x37FF7744
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE00979F4
+value = 0x3C1FE009
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE00979F8
+value = 0x37FF79FC
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A18
+value = 0x3C1FE009
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A1C
+value = 0x37FF7A20
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A3C
+value = 0x3C1FE009
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A40
+value = 0x37FF7A44
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A60
+value = 0x3C1FE009
+
+[[patches.instruction]]
+func = "func_game_E0097994_97594"
+vram = 0xE0097A64
+value = 0x37FF7A68

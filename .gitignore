@@ -1,0 +1,12 @@
+# Derived from the user's ROM; never commit.
+generated/
+*.z64
+*.n64
+*.v64
+
+# Recompiler output, regenerated from gauntlet.us.toml.
+RecompiledFuncs/
+
+# Build output and local reference checkouts.
+build/
+ref/
