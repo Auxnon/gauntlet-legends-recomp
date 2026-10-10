@@ -14,14 +14,21 @@ functions_per_output_file = 200
 stubs = []
 ignored = [
     "func_8020010C",
+    "func_game_E005A168",
+    "func_game_E005A29C",
+    "func_game_E005FBB0",
+    "func_game_E005FC98",
+    "func_game_E005FCD0",
     "func_game_E0080C54_80854",
     "func_game_E0080C74_80874",
     "func_game_E0080C9C_8089C",
     "func_game_E0080CBC_808BC",
     "func_game_E0080CDC_808DC",
     "func_game_E00A29F0",
+    "func_game_E00A2A20",
     "func_game_E00A397C_A357C",
     "aspMainTextStart",
+    "func_game_E00A4CA0",
     "func_game_E00A6420_A6020",
 ]
 

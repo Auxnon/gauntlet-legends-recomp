@@ -101,6 +101,14 @@ def Is_Prologue(word: int) -> bool:
     return word >> 16 == 0x27BD and word & 0x8000 != 0
 
 
+def Allocates_Frame(image: bytes, vram: int, func_vram: int, size: int) -> bool:
+    """addiu $sp, $sp, -N among the first few instructions."""
+    return any(
+        Is_Prologue(Word(image, vram, addr))
+        for addr in range(func_vram, min(func_vram + size, func_vram + 0x20), 4)
+    )
+
+
 def Address_References(image: bytes, vram: int) -> set[int]:
     """Addresses the program can form: lui/addiu (or ori) pairs, and raw data words."""
     refs = set()
@@ -177,12 +185,13 @@ def Trim_Jump_Table(image: bytes, vram: int, func_vram: int, size: int) -> int:
         size = end
 
 
-def Extend_Over_Branch_Targets(image: bytes, vram: int, funcs: dict) -> None:
+def Extend_Over_Branch_Targets(image: bytes, vram: int, funcs: dict, exclude: set) -> None:
     """Grow functions whose branches land past their end (the decomp split one function
     into several, or functions share an epilogue) to cover the function containing the
     target. N64Recomp recompiles each function from its own bytes, so overlaps are fine.
+    Functions in `exclude` are self-contained already and neither grow nor contain targets.
     """
-    starts = sorted(funcs)
+    starts = sorted(v for v in funcs if v not in exclude)
     changed = True
     while changed:
         changed = False
@@ -200,6 +209,41 @@ def Extend_Over_Branch_Targets(image: bytes, vram: int, funcs: dict) -> None:
                     funcs[func_vram][1] = new_end - func_vram
                     end = new_end
                     changed = True
+
+
+def Ends_In_Jump(image: bytes, vram: int, func_vram: int, size: int) -> bool:
+    """The second-to-last instruction (before the delay slot) leaves the function."""
+    if size < 8:
+        return False
+    word = Word(image, vram, func_vram + size - 8)
+    return (
+        (word >> 26 == 0 and word & 0x3F == 0x08)  # jr
+        or word >> 26 == 0x02  # j
+        or word >> 16 == 0x1000  # beq $zero, $zero (b)
+    )
+
+
+def Extend_Over_Fallthrough(image: bytes, vram: int, funcs: dict) -> int:
+    """Grow functions that run off their end into the next function's bytes. The decomp
+    sometimes labels the tail of an epilogue as a separate function; recompiled alone,
+    the first part returns without popping its stack frame."""
+    starts = sorted(funcs)
+    extended = 0
+    for i, func_vram in enumerate(starts):
+        # Only a function that allocated a frame must reach an epilogue; entries without
+        # one are often data the decomp labeled as code.
+        if not Allocates_Frame(image, vram, func_vram, funcs[func_vram][1]):
+            continue
+        j = i
+        while not Ends_In_Jump(image, vram, func_vram, funcs[func_vram][1]) and j + 1 < len(starts):
+            j += 1
+            nxt = starts[j]
+            end = func_vram + funcs[func_vram][1]
+            if nxt != end or Allocates_Frame(image, vram, nxt, funcs[nxt][1]):  # not an epilogue fragment
+                break
+            funcs[func_vram][1] = nxt + funcs[nxt][1] - func_vram
+            extended += 1
+    return extended
 
 
 def Has_Exit(image: bytes, vram: int, func_vram: int, size: int) -> bool:
@@ -255,7 +299,7 @@ def Main() -> int:
             names = Symbol_Names(elf)
         if name == "boot":
             assert rom[BOOT_ROM : BOOT_ROM + len(image)] == image, "boot.elf does not match the baserom"
-        segments.append({"name": name, "vram": vram, "image": image, "funcs": funcs, "names": names})
+        segments.append({"name": name, "vram": vram, "image": image, "funcs": funcs, "names": names, "gap_funcs": set()})
 
     def Segment_For(addr):
         return next((seg for seg in segments if seg["vram"] <= addr < seg["vram"] + len(seg["image"])), None)
@@ -346,26 +390,30 @@ def Main() -> int:
     print(f"split {split} merged functions, discovered {discovered} unlabeled functions")
 
     # Leaf functions have no prologue, so the pointer scan above misses them. Seed any
-    # referenced address that starts unclaimed code between known functions (after
-    # alignment padding) and ends in jr $ra before the next function.
+    # referenced address outside every known function whose code ends in jr $ra before
+    # the next function. Gaps hold no real function's code, so a data word taken for
+    # code costs nothing unless it's called (and fails recompilation if it isn't code).
     leaves = 0
-    for seg in segments:
+    known = {seg["name"]: sorted((v, v + s) for v, (_, s) in seg["funcs"].items()) for seg in segments}
+    for ref in sorted(all_refs):
+        seg = Segment_For(ref)
+        if seg is None or ref % 4 or ref in seg["funcs"]:
+            continue
         image, vram, funcs = seg["image"], seg["vram"], seg["funcs"]
-        seg_end = vram + len(image)
-        for func_vram in sorted(funcs):
-            gap = func_vram + funcs[func_vram][1]
-            limit = min([v for v in funcs if v >= gap], default=seg_end)
-            while gap < limit and Word(image, vram, gap) == 0:
-                gap += 4
-            while gap < limit and gap in all_refs and Word(image, vram, gap) >> 24 != 0xE0:
-                size = Discovered_Size(image, vram, gap, limit)
-                if Word(image, vram, gap + size - 8) != 0x03E00008:  # ran into the limit
-                    break
-                funcs[gap] = [seg["names"].get(gap, f"func_{seg['name']}_{gap:08X}"), size]
-                leaves += 1
-                gap += size
-                while gap < limit and Word(image, vram, gap) == 0:
-                    gap += 4
+        if any(start <= ref < end for start, end in known[seg["name"]]):
+            continue
+        if Word(image, vram, ref) == 0 or Word(image, vram, ref) >> 24 == 0xE0:
+            continue
+        limit = min([start for start, _ in known[seg["name"]] if start > ref], default=vram + len(image))
+        size = Discovered_Size(image, vram, ref, limit)
+        if size < 8 or Word(image, vram, ref + size - 8) != 0x03E00008:  # ran into the limit
+            continue
+        targets = (Branch_Target(Word(image, vram, a), a) for a in range(ref, ref + size, 4))
+        if any(t is not None and not ref <= t < ref + size for t in targets):  # data, not code
+            continue
+        funcs[ref] = [seg["names"].get(ref, f"func_{seg['name']}_{ref:08X}"), size]
+        seg["gap_funcs"].add(ref)
+        leaves += 1
     print(f"discovered {leaves} referenced leaf functions between known ones")
 
     for seg in segments:
@@ -378,7 +426,9 @@ def Main() -> int:
             rom.extend(image)
         for func_vram, entry in seg["funcs"].items():
             entry[1] = Trim_Jump_Table(image, vram, func_vram, entry[1])
-        Extend_Over_Branch_Targets(image, vram, seg["funcs"])
+        fallthrough = Extend_Over_Fallthrough(image, vram, seg["funcs"])
+        Extend_Over_Branch_Targets(image, vram, seg["funcs"], seg["gap_funcs"])
+        print(f"{name}: extended {fallthrough} functions over a fallthrough into the next")
         # Drop entries that can't be functions: data words the decomp labeled func_*,
         # or what's left of a trimmed jump table.
         funcs = sorted(

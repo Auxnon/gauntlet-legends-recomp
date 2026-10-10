@@ -143,6 +143,52 @@ static void poll_input() {
     }
 }
 
+// GAUNTLET_INPUT_SCRIPT="10:A,12.5:START" holds each button for 0.2 s at the given
+// number of seconds after the first input poll, for reproducing bugs unattended.
+static uint16_t scripted_buttons() {
+    struct Press { double time; uint16_t button; };
+    static const std::vector<Press> presses = [] {
+        std::vector<Press> result;
+        const char* script = getenv("GAUNTLET_INPUT_SCRIPT");
+        if (script == nullptr) {
+            return result;
+        }
+        static const std::pair<const char*, uint16_t> names[] = {
+            { "A", A_BUTTON }, { "B", B_BUTTON }, { "Z", Z_TRIG }, { "START", START_BUTTON },
+            { "L", L_TRIG }, { "R", R_TRIG }, { "UP", U_JPAD }, { "DOWN", D_JPAD },
+            { "LEFT", L_JPAD }, { "RIGHT", R_JPAD },
+        };
+        std::string text = script;
+        size_t pos = 0;
+        while (pos < text.size()) {
+            size_t comma = text.find(',', pos);
+            std::string item = text.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+            size_t colon = item.find(':');
+            if (colon != std::string::npos) {
+                for (const auto& [name, button] : names) {
+                    if (item.substr(colon + 1) == name) {
+                        result.push_back({ std::stod(item.substr(0, colon)), button });
+                    }
+                }
+            }
+            pos = comma == std::string::npos ? text.size() : comma + 1;
+        }
+        return result;
+    }();
+    if (presses.empty()) {
+        return 0;
+    }
+    static const Uint64 start = SDL_GetTicks64();
+    double now = (SDL_GetTicks64() - start) / 1000.0;
+    uint16_t pressed = 0;
+    for (const Press& press : presses) {
+        if (now >= press.time && now < press.time + 0.2) {
+            pressed |= press.button;
+        }
+    }
+    return pressed;
+}
+
 static bool get_input(int controller_num, uint16_t* buttons, float* x, float* y) {
     if (controller_num != 0) {
         return false;
@@ -185,6 +231,8 @@ static bool get_input(int controller_num, uint16_t* buttons, float* x, float* y)
         stick_x += SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) / 32768.0f;
         stick_y -= SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) / 32768.0f;
     }
+
+    pressed |= scripted_buttons();
 
     static const bool log_input = getenv("GAUNTLET_LOG_INPUT") != nullptr;
     static uint16_t last_pressed = 0;

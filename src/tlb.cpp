@@ -118,6 +118,12 @@ extern "C" void osMapTLB_recomp(uint8_t* rdram, recomp_context* ctx) {
         std::abort();
     }
 
+    static const bool log_tlb = getenv("GAUNTLET_LOG_TLB") != nullptr;
+    if (log_tlb) {
+        fprintf(stderr, "[TLB] map %u: mask 0x%X vaddr 0x%08X even 0x%08X odd 0x%08X\n",
+            index, page_mask, vaddr, even_paddr, odd_paddr);
+    }
+
     std::lock_guard lock{ tlb_mutex };
     TlbEntry& entry = tlb_entries[index];
     unmap_entry(entry);
