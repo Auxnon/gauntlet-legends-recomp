@@ -76,8 +76,8 @@ cmake --build build -j6
 ```
 
 Controls: arrows = stick, X = A, C = B, Z = Z, Enter = Start, A/S = L/R, IJKL = C buttons.
-Gamepads work too. The window uses XWayland because native Wayland on NVIDIA stalls RT64's
-swapchain.
+Gamepads work too. It runs natively on Wayland, falling back to X11; set
+`SDL_VIDEODRIVER=x11` to force XWayland.
 
 ## Layout
 

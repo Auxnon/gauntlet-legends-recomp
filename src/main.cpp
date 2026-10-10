@@ -54,10 +54,8 @@ static const std::u8string game_id = u8"gauntlet.n64.us";
 static SDL_Window* window = nullptr;
 
 static ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
-    // On native Wayland with NVIDIA, RT64's swapchain acquire never returns and
-    // presentation stalls after a few frames; XWayland works. An explicit
-    // SDL_VIDEODRIVER still wins, so this can be revisited.
-    SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
+    // Prefer native Wayland and fall back to X11. SDL_VIDEODRIVER overrides this.
+    SDL_SetHint(SDL_HINT_VIDEODRIVER, "wayland,x11");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         exit_error(std::string("Failed to initialize SDL: ") + SDL_GetError());
     }
